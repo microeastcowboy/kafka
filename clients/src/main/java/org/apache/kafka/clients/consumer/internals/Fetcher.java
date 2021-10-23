@@ -29,12 +29,7 @@ import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.errors.InvalidTopicException;
-import org.apache.kafka.common.errors.RecordTooLargeException;
-import org.apache.kafka.common.errors.RetriableException;
-import org.apache.kafka.common.errors.SerializationException;
-import org.apache.kafka.common.errors.TimeoutException;
-import org.apache.kafka.common.errors.TopicAuthorizationException;
+import org.apache.kafka.common.errors.*;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.metrics.Metrics;
@@ -482,7 +477,22 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                     CompletedFetch completedFetch = completedFetches.peek();
                     if (completedFetch == null) break;
 
-                    nextInLineRecords = parseCompletedFetch(completedFetch);
+                    try {
+                        nextInLineRecords = parseCompletedFetch(completedFetch);
+                    } catch (Exception e) {
+                        log.error("parse partition {} records error at offset {}",completedFetch.partition,completedFetch.fetchedOffset);
+                        // Remove a completedFetch upon a parse with exception if (1) it contains no records, and
+                        // (2) there are no fetched records with actual content preceding this exception.
+                        // The first condition ensures that the completedFetches is not stuck with the same completedFetch
+                        // in cases such as the TopicAuthorizationException, and the second condition ensures that no
+                        // potential data loss due to an exception in a following record.
+                        FetchResponse.PartitionData partition = completedFetch.partitionData;
+                        if (fetched.isEmpty() && (partition.records == null || partition.records.sizeInBytes() == 0)) {
+                            log.warn("KAFKA-6877 issue happen when parse partition {}",completedFetch.partition);
+                            //completedFetches.poll();
+                        }
+                        throw e;
+                    }
                     completedFetches.poll();
                 } else {
                     List<ConsumerRecord<K, V>> records = fetchRecords(nextInLineRecords, recordsRemaining);
