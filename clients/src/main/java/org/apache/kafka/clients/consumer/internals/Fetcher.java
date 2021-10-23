@@ -504,7 +504,8 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                     }
                 }
             }
-        } catch (KafkaException e) {
+        } catch (Throwable e) {
+            log.error("Find error msg when fetch consumer records", e);
             if (fetched.isEmpty())
                 throw e;
         }
