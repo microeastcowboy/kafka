@@ -191,7 +191,7 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                     .metadata(data.metadata())
                     .toForget(data.toForget());
             if (log.isDebugEnabled()) {
-                log.debug("Sending {} {} to broker {}", isolationLevel, data.toString(), fetchTarget);
+                log.debug("Sending fetch request {} {} to broker {}", isolationLevel, data.toString(), fetchTarget);
             }
             client.send(fetchTarget, request)
                     .addListener(new RequestFutureListener<ClientResponse>() {
@@ -211,15 +211,25 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                             Set<TopicPartition> partitions = new HashSet<>(response.responseData().keySet());
                             FetchResponseMetricAggregator metricAggregator = new FetchResponseMetricAggregator(sensors, partitions);
 
+                            int fetchCount=0;
                             for (Map.Entry<TopicPartition, FetchResponse.PartitionData> entry : response.responseData().entrySet()) {
                                 TopicPartition partition = entry.getKey();
                                 long fetchOffset = data.sessionPartitions().get(partition).fetchOffset;
                                 FetchResponse.PartitionData fetchData = entry.getValue();
 
-                                log.debug("Fetch {} at offset {} for partition {} returned fetch data {}",
-                                        isolationLevel, fetchOffset, partition, fetchData);
+                                fetchCount += fetchData.records.sizeInBytes();
+                                if(log.isDebugEnabled()) {
+                                    log.debug("xhlogprint..Input Fetch data {} at offset {} for partition {} returned fetch data {} from broker {}",
+                                            isolationLevel, fetchOffset, partition, fetchData, resp.destination());
+                                }
                                 completedFetches.add(new CompletedFetch(partition, fetchOffset, fetchData, metricAggregator,
                                         resp.requestHeader().apiVersion()));
+                                if(log.isDebugEnabled()){
+                                    log.debug("xhlogprint..Insert data for partition {} to completedFetches from broker {},queue size now is {}, and return fetch size is {}",partition,resp.destination(),completedFetches.size(),fetchData.records.sizeInBytes());
+                                }
+                            }
+                            if(log.isDebugEnabled()){
+                                log.debug("xhlogprint..fetch data size {} with one fetch ",fetchCount);
                             }
 
                             sensors.fetchLatency.record(resp.requestLatencyMs());
@@ -236,6 +246,8 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
         }
         return fetchRequestMap.size();
     }
+
+
 
     /**
      * Get topic metadata for all topics in the cluster
@@ -494,6 +506,11 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                         throw e;
                     }
                     completedFetches.poll();
+                    if(nextInLineRecords!= null) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("xhlogprint..fetch data from completedFetches queue, data size: {} ,now queue size is {} ", nextInLineRecords.completedFetch.partitionData.records.sizeInBytes(), completedFetches.size());
+                        }
+                    }
                 } else {
                     List<ConsumerRecord<K, V>> records = fetchRecords(nextInLineRecords, recordsRemaining);
                     TopicPartition partition = nextInLineRecords.partition;
@@ -851,10 +868,12 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                 long position = this.subscriptions.position(partition);
                 builder.add(partition, new FetchRequest.PartitionData(position, FetchRequest.INVALID_LOG_START_OFFSET,
                     this.fetchSize));
-                log.debug("Added {} fetch request for partition {} at offset {} to node {}", isolationLevel,
-                    partition, position, node);
+                if(log.isDebugEnabled()) {
+                    log.debug("Added {} fetch request for partition {} at offset {} to node {}", isolationLevel,
+                            partition, position, node);
+                }
             } else {
-                log.trace("Skipping fetch for partition {} because there is an in-flight request to {}", partition, node);
+                log.debug("Skipping fetch for partition {} because there is an in-flight request to {}", partition, node);
             }
         }
         Map<Node, FetchSessionHandler.FetchRequestData> reqs = new LinkedHashMap<>();

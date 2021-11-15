@@ -340,8 +340,12 @@ public class ConsumerNetworkClient implements Closeable {
      * @return A boolean indicating whether there is pending request
      */
     public boolean hasPendingRequests(Node node) {
-        if (unsent.hasRequests(node))
+        if (unsent.hasRequests(node)) {
+            if(log.isDebugEnabled()){
+                log.debug("xhprintlog..there are {} requests has not transform into inFlightRequest status for Node {} ",unsent.requestCount(node),node);
+            }
             return true;
+        }
         lock.lock();
         try {
             return client.hasInFlightRequests(node.idString());
@@ -473,6 +477,9 @@ public class ConsumerNetworkClient implements Closeable {
             while (iterator.hasNext()) {
                 ClientRequest request = iterator.next();
                 if (client.ready(node, now)) {
+                    if(log.isDebugEnabled()){
+                        log.debug("xhlogprint..now we are going to send request to node {} for client request {}",node,request);
+                    }
                     client.send(request, now);
                     iterator.remove();
                     requestsSent = true;

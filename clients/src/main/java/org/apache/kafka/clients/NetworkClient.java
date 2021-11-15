@@ -432,6 +432,9 @@ public class NetworkClient implements KafkaClient {
                 send,
                 now);
         this.inFlightRequests.add(inFlightRequest);
+        if(log.isDebugEnabled()){
+            log.debug("requset {} had got to inFlightRequests list",inFlightRequest);
+        }
         selector.send(inFlightRequest.send);
     }
 

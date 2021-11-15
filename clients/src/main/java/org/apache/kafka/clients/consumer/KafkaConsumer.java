@@ -1120,8 +1120,15 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     //
                     // NOTE: since the consumed position has already been updated, we must not allow
                     // wakeups or any other errors to be triggered prior to returning the fetched records.
-                    if (fetcher.sendFetches() > 0 || client.hasPendingRequests())
+                    int fetchSize = fetcher.sendFetches();
+                    if (fetchSize > 0 || client.hasPendingRequests()) {
+                        if(fetchSize > 0){
+                            if(log.isDebugEnabled()){
+                                log.debug("xhlogprint..before return data,we have send {} fetches",fetchSize);
+                            }
+                        }
                         client.pollNoWakeup();
+                    }
 
                     return this.interceptors.onConsume(new ConsumerRecords<>(records));
                 }
